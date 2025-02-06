@@ -1,0 +1,27 @@
+{
+	"name": "caliup",
+	"version": "1.0.0",
+	"main": "index.js",
+	"type": "module",
+	"scripts": {
+		"test": "node --test",
+		"test:watch": "node --test --watch",
+		"test:debug": "node inspect --test --watch"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/joaofer11/caliup.git"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"bugs": {
+		"url": "https://github.com/joaofer11/caliup/issues"
+	},
+	"homepage": "https://github.com/joaofer11/caliup#readme",
+	"description": "",
+	"devDependencies": {
+		"@types/node": "^22.13.1",
+		"typescript": "^5.7.3"
+	}
+}
