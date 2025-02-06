@@ -8,16 +8,13 @@ export async function* fetch_exercise_performance_metrics(sessions, query)
 	result.to = query.session_end;
 	result.metrics = new Map();
 
-	const readable = sessions.find_streaming({
-		sort_by_date: true,
-		filter: {
-			session_start: query.session_start,
-			session_end: query.session_end,
-			exercise_names: query.exercise_names
-		}
+	const sessions_stream = sessions.stream_in_date_range({
+		session_start: query.from,
+		session_end: query.to,
+		exercise_names: query.exercise_names
 	});
 
-	for await (const session of readable) {
+	for await (const session of sessions_stream) {
 		for (const exercise of session.exercises) {
 			if (!result.metrics.has(exercise.name)) {
 				result.metrics.set(exercise.name, {

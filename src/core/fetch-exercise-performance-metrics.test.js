@@ -1,7 +1,7 @@
 import { strict } from "node:assert";
 import { describe, it } from "node:test";
-import { fetch_exercise_performance_metrics } from "./fetch_exercise_performance_metrics.js";
-import { InMemorySessionStore } from "./in_memory_session_store.js";
+import { fetch_exercise_performance_metrics } from "./fetch-exercise-performance-metrics.js";
+import { InMemorySessionStore } from "./in-memory-session-store.js";
 
 describe("Exercise performance metrics", async () => {
 	const sessions_mock = [{
