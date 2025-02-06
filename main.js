@@ -1,6 +1,50 @@
 import { strict } from "node:assert";
 import { describe, it } from "node:test";
 
+function elapsed_one_month(from, to)
+{
+	const from_ms = from.getTime();
+	const to_ms = to.getTime();
+	const diff_ms = to_ms - from_ms;
+
+	return (diff_ms / 1000 / 60 / 60 / 24 / 30) >= 1;
+}
+
+class SessionStore {
+	constructor(sessions)
+	{
+		this.sessions = sessions;
+	}
+
+	async *next(query)
+	{
+		if (query.sort_by_date) {
+			this.sessions.sort((a, b) => a.performed_at.getTime() - b.performed_at.getTime());
+		}
+
+		for (const session of this.sessions) {
+			if (query.filter.session_start) {
+				if (session.performed_at.getTime() < query.filter.session_start.getTime())
+					continue;
+			}
+
+			if (query.filter.session_end) {
+				if (session.performed_at.getTime() > query.filter.session_end.getTime())
+					continue;
+			}
+
+			const ret_session = { ...session };
+			if (query.filter.exercise_names) {
+				const exercises = session.exercises.filter(({ name }) =>
+					query.filter.exercise_names.some(name2 => name == name2));
+				ret_session.exercises = exercises;
+			}
+
+			yield ret_session;
+		}
+	}
+}
+
 function date_is_in_range(date, range)
 {
 	const date_ms = date.getTime();
@@ -11,21 +55,29 @@ function date_is_in_range(date, range)
 	       date_ms <= end_ms;
 }
 
-function exercise_performance_metrics(sessions, query)
+async function* exercise_performance_metrics(sessions, query)
 {
 	const result = {};
 	const metrics = new Map();
 
-	result.from = query.session_start;
-	result.to = query.session_end;
+	result.from = new Date(query.session_start);
 	result.metrics = metrics;
 
-	for (const session of sessions) {
-		if (!date_is_in_range(session.performed_at, {
-			start: query.session_start,
-		    end: query.session_end
-		}))
-			continue;
+	for await (const session of sessions.next({
+		sort_by_date: true,
+		filter: {
+			session_start: query.session_start,
+			session_end: query.session_end,
+			exercise_names: query.exercise_names
+		}
+	})) {
+		if (elapsed_one_month(result.from, session.performed_at)) {
+			result.to = new Date(session.performed_at);
+			yield result;
+
+			result.from = new Date(session.performed_at);
+			result.metrics = new Map();
+		}
 
 		for (const exercise of session.exercises) {
 			if (query.exercise_names &&
@@ -71,10 +123,13 @@ function exercise_performance_metrics(sessions, query)
 		}
 	}
 
-	return result;
+	if (result.metrics.size) {
+		result.to = new Date(query.session_end);
+		return result;
+	}
 }
 
-describe("Exercise performance metrics", () => {
+describe("Exercise performance metrics", async () => {
 	const sessions_mock = [{
 		performed_at: new Date(2025, 0, 1),
 		exercises: [{
@@ -121,10 +176,12 @@ describe("Exercise performance metrics", () => {
 		}]
 	}];
 
-	const { metrics } = exercise_performance_metrics(sessions_mock, {
+	const sessions_mock_class = new SessionStore(sessions_mock);
+
+	const { metrics } = (await exercise_performance_metrics(sessions_mock_class, {
 		session_start: sessions_mock[0].performed_at,
 		session_end: sessions_mock[sessions_mock.length-1].performed_at
-	});
+	}).next()).value;
 
 	const push_up = metrics.get("Push-up");
 	const pull_up = metrics.get("Pull-up");
@@ -169,11 +226,11 @@ describe("Exercise performance metrics", () => {
 		strict.equal(pull_up.plateau_in_weight, 2);
 	});
 
-	it("returns the metrics for a specific date range", () => {
-		const { from, to, metrics } = exercise_performance_metrics(sessions_mock, {
+	it("returns the metrics for a specific date range", async () => {
+		const { from, to, metrics } = (await exercise_performance_metrics(sessions_mock_class, {
 			session_start: sessions_mock[1].performed_at,
 			session_end: sessions_mock[2].performed_at
-		});
+		}).next()).value;
 
 		const push_up = metrics.get("Push-up");
 		const pull_up = metrics.get("Pull-up");
@@ -184,12 +241,12 @@ describe("Exercise performance metrics", () => {
 		strict.equal(pull_up.new_max_reps, 6);
 	});
 
-	it("contain filtered metrics for a specific exercise", () => {
-		const { metrics } = exercise_performance_metrics(sessions_mock, {
+	it("contain filtered metrics for a specific exercise", async () => {
+		const { metrics } = (await exercise_performance_metrics(sessions_mock_class, {
 			exercise_names: ["Push-up"],
 			session_start: sessions_mock[0].performed_at,
 			session_end: sessions_mock[sessions_mock.length-1].performed_at
-		});
+		}).next()).value;
 
 		strict.equal(metrics.size, 1);
 		strict.equal(metrics.has("Push-up"), true);
